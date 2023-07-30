@@ -7,6 +7,7 @@ Practice for Hidden Markov Models
 """
 
 #### Libraries ####
+import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -15,6 +16,12 @@ import nasdaqdatalink
 from sklearn.model_selection import train_test_split
 from meteostat import Point, Daily
 from datetime import datetime
+
+
+# Seed seeds #
+random_seed = 1234
+random.seed(random_seed)
+np.random.seed(random_seed)
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
@@ -42,19 +49,23 @@ gold_data = gold_data.dropna(axis = 0)
 plt.figure(figsize = (15, 10))
 plt.subplot(2, 1, 1)
 plt.plot(gold_data['datetime'], gold_data['gold_price_usd'])
-plt.xlabel('Date')
-plt.ylabel('Gold Price (USD)')
+plt.xlabel('Date', fontsize = 16)
+plt.ylabel('Gold Price (USD)', fontsize = 16)
 plt.grid(True)
+plt.xticks(fontsize = 12)
+plt.yticks(fontsize = 12)
 plt.subplot(2, 1, 2)
 plt.plot(gold_data['datetime'], gold_data['gold_price_diff'])
-plt.xlabel('Date')
-plt.ylabel("Gold Price Change (USD)")
+plt.xlabel('Date', fontsize = 16)
+plt.ylabel("Gold Price Change (USD)", fontsize = 16)
 plt.grid(True)
+plt.xticks(fontsize = 12)
+plt.yticks(fontsize = 12)
 plt.show()
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-#### Set HMM fro Gold Price ####
+#### Set HMM for Gold Price ####
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
 # Daily prices as observed values #
@@ -93,6 +104,8 @@ for i in states:
     plt.plot(x, y, '.', label=state_labels[i])  # Use the state_labels dictionary to get the label for each state
 plt.legend(fontsize=16)
 plt.grid(True)
+plt.xticks(fontsize = 12)
+plt.yticks(fontsize = 12)
 plt.xlabel("Date", fontsize=16)
 plt.ylabel("Gold Price (USD)", fontsize=16)
 plt.subplot(2, 1, 2)
@@ -103,88 +116,120 @@ for i in states:
     plt.plot(x, y, '.', label=state_labels[i])  # Use the state_labels dictionary to get the label for each state
 plt.legend(fontsize=16)
 plt.grid(True)
+plt.xticks(fontsize = 12)
+plt.yticks(fontsize = 12)
 plt.xlabel("Date", fontsize=16)
 plt.ylabel("Gold Price Difference (USD)", fontsize=16)
 
 plt.show()
 
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-#### Import Oil Price Data ####
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#### Import Coffee Price Data ####
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
 # Set NASDAQ API Key #
 nasdaqdatalink.ApiConfig.api_key = "XssrY3keCyssQs9FmqPr"
 
 
-# Pull Oil Data #
-oil_data = nasdaqdatalink.get('NSE/OIL', start_date = '1990-01-01').reset_index()
-
+# Pull Coffee Data #
+cof_data = nasdaqdatalink.get('ODA/PCOFFOTM_USD', start_date = '1990-01-01',
+                              end_date = '2022-12-31').reset_index()
 
 # Make Date into datetime #
-oil_data['Date'] = pd.to_datetime(oil_data['Date'])
+cof_data['Date'] = pd.to_datetime(cof_data['Date'])
 
 
-# Get oil price difference #
-oil_data['oil_price_diff'] = oil_data['Close'].diff()
-oil_data = oil_data.dropna(axis = 0)
+# Get coffee price difference #
+cof_data['coffee_price_diff'] = cof_data['Value'].diff()
+cof_data = cof_data.dropna(subset = ['coffee_price_diff'])
 
 
-# Plot daily oil prices and difference #
+# Plot monthly coffee prices and difference #
 plt.figure(figsize = (15, 10))
 plt.subplot(2, 1, 1)
-plt.plot(oil_data['Date'], oil_data['Close'])
-plt.xlabel('Date')
-plt.ylabel('Oil Price (USD)')
+plt.plot(cof_data['Date'], cof_data['Value'])
+plt.xlabel('Date', fontsize = 16)
+plt.ylabel('Monthly Coffee Price (USD)', fontsize = 16)
 plt.grid(True)
+plt.xticks(fontsize = 12)
+plt.yticks(fontsize = 12)
 plt.subplot(2, 1, 2)
-plt.plot(oil_data['Date'], oil_data['oil_price_diff'])
-plt.xlabel('Date')
-plt.ylabel("Oil Price Change (USD)")
+plt.plot(cof_data['Date'], cof_data['coffee_price_diff'])
+plt.xlabel('Date', fontsize = 16)
+plt.ylabel("Montly Coffee Price Change (USD)", fontsize = 16)
 plt.grid(True)
+plt.xticks(fontsize = 12)
+plt.yticks(fontsize = 12)
 plt.show()
 
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-#### Set HMM for Oil Price ####
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#### Set HMM for Coffee Price ####
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
 # Daily prices as observed values #
-X = oil_data[['oil_price_diff']]
-
-
-# Split into training and val sets #
-X_train, X_val = train_test_split(X, test_size = 0.25, random_state = 1234)
+X = cof_data[['coffee_price_diff']]
 
 
 # Make hyperparameter grid #
-n_components_range = [2, 10]
+n_components_range = [2, 8]
 covariance_types = ['spherical', 'tied', 'diag', 'full']
-n_iter = [1000, 5000, 10000, 20000, 30000]
-best_score = float("-inf")
-best_model = None
+n_iter = [40000, 45000, 50000, 55000, 60000]
+num_seeds = 10
+best_scores = []
+best_models = []
+best_seeds= []
 
-# Grid Search #
-for n_components in n_components_range:
-    for covariance_type in covariance_types:
-        for iters in n_iter:
-            model = hmm.GaussianHMM(n_components = n_components,
-                                    covariance_type = covariance_type, 
-                                    n_iter = iters, random_state = 1234)
-            model.fit(X_train)
-            ll_val = model.score(X_val)
-            if ll_val > best_score:
-                best_score = ll_val
-                best_model = model 
+
+# Grid Search with multiple random seeds#
+for seed in range(num_seeds):
+    
+    # Split into training and val sets #
+    X_train, X_val = train_test_split(X, test_size = 0.25, random_state = seed)
+    X_train = X_train.dropna()
+    X_val = X_val.dropna()
+    
+    # Initialize variables for the best model and score for this seed  #
+    best_score_seed = float('-inf')
+    best_model_seed = None
+    
+    # Grid Search for this seed #
+    for n_components in n_components_range:
+        for covariance_type in covariance_types:
+            for iters in n_iter:
+                model = hmm.GaussianHMM(n_components=n_components,
+                                        covariance_type=covariance_type,
+                                        n_iter=iters, random_state=seed)
+                model.fit(X_train)
+                ll_val = model.score(X_val)
+                if ll_val > best_score_seed:
+                    best_score_seed = ll_val
+                    best_model_seed = model
+                    
+    # Store the results for this seed #
+    best_models.append(best_model_seed)
+    best_scores.append(best_score_seed)
+    best_seeds.append(seed)
     """
     Since this is an unsupervised method, I attempted to minimze the 
     log-likelihood score of the model to find the best fit. I allowed
-    the number of components and covariance type to change. 
+    the number of components, covariance type, iterations, and seeds 
+    to change. 
     """
 
+# Find the index of the best model among all seeds #
+best_index = np.argmax(best_scores)
 
-# Print best model #
-print("Best model:", best_model)
+
+# Print the best overall model and its associated seed #
+print("Best model:", best_models[best_index])
+print("Best log-likelihood score:", best_scores[best_index])
+print("Seed used for the best model:", best_seeds[best_index])
+
+
+# Pull best model #
+best_model = best_models[best_index]
 
 
 # Predict hidden states #
@@ -198,36 +243,38 @@ state_labels = {
     1: 'High'}
 
 
-# Plot observations with states
+# Plot observations with states #
 plt.figure(figsize=(15, 10))
 plt.subplot(2, 1, 1)
 for i in states:
     want = (Z == i)
-    x = oil_data["Date"].iloc[want]
-    y = oil_data["Close"].iloc[want]
+    x = cof_data["Date"].iloc[want]
+    y = cof_data["Value"].iloc[want]
     plt.plot(x, y, '.', label=state_labels[i])  # Use the state_labels dictionary to get the label for each state
 plt.legend(fontsize=16)
 plt.grid(True)
+plt.xticks(fontsize = 12)
+plt.yticks(fontsize = 12)
 plt.xlabel("Date", fontsize=16)
-plt.ylabel("Oil Price (USD)", fontsize=16)
+plt.ylabel("Monthly Coffee Price (USD)", fontsize=16)
 plt.subplot(2, 1, 2)
 for i in states:
     want = (Z == i)
-    x = oil_data["Date"].iloc[want]
-    y = oil_data["oil_price_diff"].iloc[want]
+    x = cof_data["Date"].iloc[want]
+    y = cof_data["coffee_price_diff"].iloc[want]
     plt.plot(x, y, '.', label=state_labels[i])  # Use the state_labels dictionary to get the label for each state
 plt.legend(fontsize=16)
 plt.grid(True)
 plt.xlabel("Date", fontsize=16)
-plt.ylabel("Oil Price Difference (USD)", fontsize=16)
-
+plt.ylabel("Monthly Coffee Price Difference (USD)", fontsize=16)
+plt.xticks(fontsize = 12)
+plt.yticks(fontsize = 12)
 plt.show()
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 #### Import Lexington, KY Weather Data ####
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-
 
 # Set time period #
 start = datetime(2000, 1, 1)
@@ -260,9 +307,11 @@ ky_data['temp'] = (ky_data['tavg'] * 9/5) + 32
 # Plot temperature over time #
 plt.figure(figsize = (15, 10))
 plt.plot(ky_data['Date'], ky_data['temp'])
-plt.xlabel('Date')
-plt.ylabel('Temperature (F)')
+plt.xlabel('Date', fontsize = 16)
+plt.ylabel('Temperature (F)', fontsize = 16)
 plt.grid(True)
+plt.xticks(fontsize = 12)
+plt.yticks(fontsize = 12)
 plt.show()
 
 
@@ -288,10 +337,10 @@ states = pd.unique(Z)
 
 # Set dictionary for labels #
 state_labels = {
-    0: 'Summer',
-    1: 'Winter',
-    2: 'Spring',
-    3: 'Fall'}
+    0: 'Hot',
+    1: 'Cold',
+    2: 'Warm',
+    3: 'Cool'}
 
 
 # Plot observations with states
@@ -305,8 +354,11 @@ plt.legend(fontsize=16)
 plt.grid(True)
 plt.xlabel("Date", fontsize=16)
 plt.ylabel("Temperature (F)", fontsize=16)
+plt.xticks(fontsize = 12)
+plt.yticks(fontsize = 12)
 
 plt.show()
+
 
 
 
